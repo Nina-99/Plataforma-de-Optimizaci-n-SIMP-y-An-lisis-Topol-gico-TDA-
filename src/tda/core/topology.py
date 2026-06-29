@@ -1,3 +1,13 @@
+"""Módulo de funciones topológicas básicas.
+
+Este módulo proporciona implementaciones fundamentales para calcular distancias entre diagramas de persistencia y extraer números de Betti de estructuras topológicas. Las funciones implementadas utilizan las bibliotecas persim y numpy para cálculos topológicos eficientes.
+
+Las funciones principales incluyen:
+- Cálculo de distancia de Wasserstein entre diagramas
+- Cálculo de distancia de Bottleneck entre diagramas
+- Extracción de números de Betti (invariantes topológicos)
+"""
+
 import numpy as np
 from typing import Tuple
 
@@ -10,25 +20,31 @@ except ImportError:
 
 
 def wasserstein_distance(dgm1: np.ndarray, dgm2: np.ndarray) -> float:
-    """Calculates the Wasserstein distance between two persistence diagrams.
+    """Calcula la distancia de Wasserstein entre dos diagramas de persistencia.
+
+    Esta función mide la similitud topológica entre dos estructuras
+    mediante la distancia de Wasserstein, que cuantifica el esfuerzo
+    requerido para transformar un diagrama en otro.
 
     Args:
-        dgm1 (np.ndarray): First persistence diagram of shape (n, 2) where each row is [birth, death].
-        dgm2 (np.ndarray): Second persistence diagram of shape (m, 2) where each row is [birth, death].
+        dgm1 (np.ndarray): Primer diagrama de persistencia con forma (n, 2)
+            donde cada fila representa [nacimiento, muerte].
+        dgm2 (np.ndarray): Segundo diagrama de persistencia con forma (m, 2)
+            donde cada fila representa [nacimiento, muerte].
 
     Returns:
-        float: The Wasserstein distance between the two diagrams.
+        float: La distancia de Wasserstein entre los dos diagramas.
 
     Raises:
-        ImportError: If persim library is not available.
-        ValueError: If input arrays are not of shape (n, 2) or (m, 2).
+        ImportError: Si la biblioteca persim no está disponible.
+        ValueError: Si los arrays de entrada no tienen forma (n, 2) o (m, 2).
 
     Examples:
         >>> import numpy as np
         >>> dgm1 = np.array([[0.0, 1.0], [1.2, 2.0]])
         >>> dgm2 = np.array([[0.0, 1.1], [1.0, 1.8]])
-        >>> # Assuming persim is installed:
-        >>> # wasserstein_distance(dgm1, dgm2)
+        >>> # Suponiendo que persim está instalado:
+        >>> # distancia = wasserstein_distance(dgm1, dgm2)
     """
     if persim_wasserstein is None:
         raise ImportError("persim library is required for wasserstein_distance")
@@ -40,25 +56,31 @@ def wasserstein_distance(dgm1: np.ndarray, dgm2: np.ndarray) -> float:
 
 
 def bottleneck_distance(dgm1: np.ndarray, dgm2: np.ndarray) -> float:
-    """Calculates the Bottleneck distance between two persistence diagrams.
+    """Calcula la distancia de Bottleneck entre dos diagramas de persistencia.
+
+    Esta función calcula la distancia de Bottleneck, una métrica más
+    conservadora que Wassserstein que mide la diferencia máxima entre
+    puntos correspondientes de los diagramas.
 
     Args:
-        dgm1 (np.ndarray): First persistence diagram of shape (n, 2) where each row is [birth, death].
-        dgm2 (np.ndarray): Second persistence diagram of shape (m, 2) where each row is [birth, death].
+        dgm1 (np.ndarray): Primer diagrama de persistencia con forma (n, 2)
+            donde cada fila representa [nacimiento, muerte].
+        dgm2 (np.ndarray): Segundo diagrama de persistencia con forma (m, 2)
+            donde cada fila representa [nacimiento, muerte].
 
     Returns:
-        float: The Bottleneck distance between the two diagrams.
+        float: La distancia de Bottleneck entre los dos diagramas.
 
     Raises:
-        ImportError: If persim library is not available.
-        ValueError: If input arrays are not of shape (n, 2) or (m, 2).
+        ImportError: Si la biblioteca persim no está disponible.
+        ValueError: Si los arrays de entrada no tienen forma (n, 2) o (m, 2).
 
     Examples:
         >>> import numpy as np
         >>> dgm1 = np.array([[0.0, 1.0], [1.2, 2.0]])
         >>> dgm2 = np.array([[0.0, 1.1], [1.0, 1.8]])
-        >>> # Assuming persim is installed:
-        >>> # bottleneck_distance(dgm1, dgm2)
+        >>> # Suponiendo que persim está instalado:
+        >>> # distancia = bottleneck_distance(dgm1, dgm2)
     """
     if persim_bottleneck is None:
         raise ImportError("persim library is required for bottleneck_distance")
@@ -70,19 +92,25 @@ def bottleneck_distance(dgm1: np.ndarray, dgm2: np.ndarray) -> float:
 
 
 def betti_numbers(persistence_diagram: np.ndarray) -> Tuple[int, int]:
-    """Extracts Betti numbers (beta_0, beta_1) from a persistence diagram.
+    """Extrae los números de Betti (β₀, β₁) de un diagrama de persistencia.
+
+    Los números de Betti son invariantes topológicos que representan:
+    - β₀: Número de componentes conexas (H₀)
+    - β₁: Número de agujeros de dimensión 1 (H₁)
 
     Args:
-        persistence_diagram (np.ndarray): Persistence diagram of shape (n, 3) where each row is [birth, death, dimension].
-            Dimension 0 corresponds to H_0 (connected components), dimension 1 to H_1 (loops).
+        persistence_diagram (np.ndarray): Diagrama de persistencia con forma (n, 3)
+            donde cada fila es [nacimiento, muerte, dimensión]. La dimensión 0
+            corresponde a H₀ (componentes conexas), la dimensión 1 a H₁ (agujeros).
 
     Returns:
-        Tuple[int, int]: A tuple (beta_0, beta_1) where:
-            beta_0: Number of connected components (points in H_0 with infinite death or finite)
-            beta_1: Number of 1-dimensional holes (points in H_1)
+        Tuple[int, int]: Una tupla (beta_0, beta_1) donde:
+            beta_0: Número de componentes conexas.
+            beta_1: Número de agujeros de dimensión 1.
 
     Raises:
-        ValueError: If input array is not of shape (n, 3) or contains invalid dimensions.
+        ValueError: Si el array de entrada no tiene forma (n, 3) o contiene
+            dimensiones inválidas (deben ser solo 0 o 1).
 
     Examples:
         >>> import numpy as np
@@ -102,9 +130,9 @@ def betti_numbers(persistence_diagram: np.ndarray) -> Tuple[int, int]:
     h0 = persistence_diagram[persistence_diagram[:, 2] == 0]
     h1 = persistence_diagram[persistence_diagram[:, 2] == 1]
 
-    # beta_0: number of connected components (finite or infinite death)
+    # beta_0: número de componentes conexas (muerte finita o infinita)
     beta_0 = int(h0.shape[0])
-    # beta_1: number of 1-dimensional holes
+    # beta_1: número de agujeros de dimensión 1
     beta_1 = int(h1.shape[0])
 
     return (beta_0, beta_1)

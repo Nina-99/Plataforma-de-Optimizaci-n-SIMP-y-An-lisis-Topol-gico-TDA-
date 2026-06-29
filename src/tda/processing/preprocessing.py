@@ -1,20 +1,22 @@
-"""Preprocessing utilities for persistence diagrams in TDA pipeline.
+"""Utilidades de preprocesamiento para diagramas de persistencia en el pipeline TDA.
 
-Provides functions for filtering outliers, scaling, and summarizing diagrams.
+Proporciona funciones para filtrar intervalos de persistencia cortos, normalizar
+coordenadas de nacimiento/muerte y calcular histogramas de vida de persistencia.
 """
+
 from typing import List
 import numpy as np
 
 
 def filter_persistence_diagram(dgm: List[List[float]], threshold: float) -> List[List[float]]:
-    """Remove persistence intervals shorter than the threshold.
+    """Elimina intervalos de persistencia más cortos que el umbral.
 
     Args:
-        dgm (List[List[float]]): Persistence diagram of shape (n_pairs, 2).
-        threshold (float): Minimum persistence length to retain a point.
+        dgm (List[List[float]]): Diagrama de persistencia de forma (n_pairs, 2).
+        threshold (float): Longitud mínima de persistencia para retener un punto.
 
     Returns:
-        List[List[float]]: Diagram after removing short-lived intervals.
+        List[List[float]]: Diagrama después de eliminar intervalos de vida corta.
 
     Examples:
         >>> dgm = [[[0.1, 1.2], [0.5, 0.6]]]
@@ -33,14 +35,14 @@ def filter_persistence_diagram(dgm: List[List[float]], threshold: float) -> List
 
 
 def normalize_diagram(dgm: List[List[float]], diameter: float) -> List[List[float]]:
-    """Normalize persistence diagram by scaling birth/death coordinates.
+    """Normaliza un diagrama de persistencia escalando coordenadas de nacimiento/muerte.
 
     Args:
-        dgm (List[List[float]]): Persistence diagram of shape (n_pairs, 2).
-        diameter (float): Diameter of the point cloud (max pairwise distance).
+        dgm (List[List[float]]): Diagrama de persistencia de forma (n_pairs, 2).
+        diameter (float): Diámetro de la nube de puntos (distancia máxima entre pares).
 
     Returns:
-        List[List[float]]: Scaled diagram.
+        List[List[float]]: Diagrama escalado.
 
     Examples:
         >>> dgm = [[[0.5, 1.5]]]
@@ -51,7 +53,7 @@ def normalize_diagram(dgm: List[List[float]], diameter: float) -> List[List[floa
     for dim_dgm in dgm:
         norm_dim = []
         for birth, death in dim_dgm:
-            # Avoid division by zero
+            # Evita división por cero
             factor = 1.0 / max(diameter, 1e-8)
             norm_birth = birth * factor
             norm_death = death * factor
@@ -61,14 +63,14 @@ def normalize_diagram(dgm: List[List[float]], diameter: float) -> List[List[floa
 
 
 def get_persistence_histogram(dgm: List[List[float]], bins: int = 10) -> np.ndarray:
-    """Compute histogram of persistence lifetimes.
+    """Calcula un histograma de las vidas de persistencia.
 
     Args:
-        dgm (List[List[float]]): Persistence diagram (n_pairs, 2).
-        bins (int): Number of bins for the histogram. Defaults to 10.
+        dgm (List[List[float]]): Diagrama de persistencia (n_pairs, 2).
+        bins (int): Número de intervalos (bins) para el histograma. Por defecto 10.
 
     Returns:
-        numpy.ndarray: 1D array representing the distribution of lifetimes.
+        numpy.ndarray: Arreglo 1D que representa la distribución de las vidas.
 
     Examples:
         >>> import numpy as np
@@ -76,22 +78,22 @@ def get_persistence_histogram(dgm: List[List[float]], bins: int = 10) -> np.ndar
         >>> get_persistence_histogram(dgm, bins=3)
         array([1., 0., 1.])
     """
-    # Flatten all lifetimes
+    # Aplanar todas las vidas
     lifetimes = []
-    for death, birth in dgm:  # Note: persim returns [death, birth] order sometimes
-        if len(death.shape) > 1:  # Handle matrix case
+    for death, birth in dgm:  # Nota: persim a veces devuelve [death, birth]
+        if len(death.shape) > 1:  # Manejar caso de matriz
             for b, d in death:
                 lifetimes.append(d - b)
         else:
             lifetimes.append(death - birth)
-    
+
     if not lifetimes:
         return np.zeros(bins)
-    
-    # Determine histogram range based on max lifetime
+
+    # Determinar rango del histograma basado en la vida máxima
     max_life = max(lifetimes)
     if max_life == 0:
         max_life = 1.0
-    
+
     hist, _ = np.histogram(lifetimes, bins=bins, range=(0, max_life))
     return hist

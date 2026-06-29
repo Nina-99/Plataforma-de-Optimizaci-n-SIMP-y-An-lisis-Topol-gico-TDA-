@@ -48,14 +48,17 @@ else:
 # FUNCIONES AUXILIARES (TDA UI)
 # ==========================================
 def generate_cloud(shape, n_points):
-    """Generates a synthetic 3D point cloud for a sphere or torus.
+    """Genera una nube de puntos 3D sintética para una esfera o toro.
 
     Args:
-        shape (str): The shape to generate. Either 'sphere' or 'torus'.
-        n_points (int): The number of points to sample.
+        shape (str): Forma a generar. 'sphere' o 'torus'.
+        n_points (int): Número de puntos a muestrear.
 
     Returns:
-        numpy.ndarray: An array of shape (n_points, 3) representing the point cloud.
+        numpy.ndarray: Arreglo de forma (n_points, 3) representando la nube de puntos.
+
+    Raises:
+        ValueError: Si se proporciona una forma no reconocida.
     """
     if shape == "sphere":
         theta = np.random.uniform(0, 2 * np.pi, n_points)
@@ -68,14 +71,14 @@ def generate_cloud(shape, n_points):
         return np.column_stack([(R + r * np.cos(phi)) * np.cos(theta), (R + r * np.cos(phi)) * np.sin(theta), r * np.sin(phi)])
 
 def add_gaussian_noise(points, noise_std):
-    """Adds Gaussian noise to a point cloud relative to its diameter.
+    """Agrega ruido gaussiano a una nube de puntos relativo a su diámetro.
 
     Args:
-        points (numpy.ndarray): The original point cloud of shape (N, 3).
-        noise_std (float): Noise standard deviation factor.
+        points (numpy.ndarray): Nube de puntos original de forma (N, 3).
+        noise_std (float): Factor de desviación estándar del ruido.
 
     Returns:
-        numpy.ndarray: The noisy point cloud of shape (N, 3).
+        numpy.ndarray: Nube de puntos con ruido de forma (N, 3).
     """
     from scipy.spatial.distance import pdist
     diam = float(pdist(points).max())

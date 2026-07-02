@@ -2,6 +2,10 @@
 
 Este módulo implementa el algoritmo SIMP (Solid Isotropic Material with Penalization) acoplado con análisis topológico de datos para resolver problemas de optimización estructural en dos dimensiones.
 
+## Optimización Topológica de Vigas
+
+Este módulo también incluye funcionalidad para optimización topológica de vigas utilizando el método de diferencias finitas y el enfoque SIMP. La implementación se encuentra en el archivo `beam_optimizer.py`.
+
 ## Contexto Matemático
 
 La optimización topológica busca encontrar la distribución óptima de material dentro de un dominio para minimizar la flexibilidad (cumplir con la rigidez estructural máxima), sujeta a una restricción sobre el volumen de material total. El modelo matemático SIMP penaliza las densidades intermedias para aproximarse a un diseño binario de vacío (0) o sólido (1):
@@ -30,6 +34,8 @@ Este módulo es la piedra angular para la validación de la **Hipótesis Especí
 
 ### `SimpTda2DOptimizer` (Clase Principal)
 
+### `BeamOptimizer` (Clase para Optimización de Vigas)
+
 - **Parámetros del Constructor (`__init__`):**
   - `nelx` (int): Número de elementos en el eje X (por defecto $60$).
   - `nely` (int): Número de elementos en el eje Y (por defecto $30$).
@@ -47,6 +53,24 @@ Este módulo es la piedra angular para la validación de la **Hipótesis Especí
   - `betti_1` (int): Cantidad de ciclos topológicos persistentes significativos ($\beta_1$).
   - `c` (float): Compliance final del sistema optimizado.
   - `reduccion_pct` (float): Porcentaje de reducción del compliance con respecto a la estructura inicial homogénea.
+
+### `optimizar_viga_completo(L, q, callback=None)`
+
+- **Entradas:**
+  - `L` (float): Longitud de la viga (m)
+  - `q` (float): Carga distribuida (kN/m)
+  - `callback` (callable, opcional): Función de callback para actualizar la visualización en tiempo real
+- **Salidas:**
+  - `x` (np.ndarray): Posiciones a lo largo de la viga
+  - `I` (np.ndarray): Momentos de inercia optimizados
+  - `Y` (np.ndarray): Deflexiones optimizadas
+  - `Y_original` (np.ndarray): Deflexiones de la viga original
+  - `M` (np.ndarray): Momentos flectores
+  - `h_v` (np.ndarray): Alturas de la viga optimizada
+  - `iterations` (int): Número de iteraciones realizadas
+  - `final_error` (float): Error final de convergencia
+  - `saving_pct` (float): Porcentaje de ahorro de material
+  - `weight_saved` (float): Peso ahorrado (toneladas)
 
 ## Dependencias
 

@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 import plotly.graph_objects as go
+import plotly.io as pio
 from sklearn.cluster import KMeans
 from ripser import ripser
 import io
@@ -26,7 +27,7 @@ st.sidebar.title("Parámetros de Configuración")
 # Selector de página
 page = st.sidebar.radio(
     "Seleccione el Análisis", 
-    ["🏗️ 1. Optimización SIMP (H.E.2)", "📊 2. TDA vs K-Medias (H.E.1)"],
+    ["🏗️ 1. Optimización SIMP (H.E.2)", "📊 2. TDA vs K-Medias (H.E.1)", "📈 3. Optimización Topológica"],
     key="navigation_page"
 )
 
@@ -38,11 +39,52 @@ if page == "🏗️ 1. Optimización SIMP (H.E.2)":
     volfrac = st.sidebar.slider("Fracción de Volumen", 0.1, 0.9, 0.5, 0.05, key="simp_volfrac_input")
     penal = st.sidebar.number_input("Factor Penalización (p)", value=3.0, step=1.0, key="simp_penal")
     rmin = st.sidebar.number_input("Radio Filtro", value=1.5, step=0.1, key="simp_rmin")
-else:
+elif page == "📊 2. TDA vs K-Medias (H.E.1)":
     st.sidebar.header("📊 TDA vs K-Medias (Pestaña 2)")
     n_points = st.sidebar.slider("Puntos por forma", 100, 500, 250, 50, key="tda_n_points")
     noise_level = st.sidebar.slider("Ruido Gaussiano (%)", 0.0, 0.3, 0.15, 0.05, key="tda_noise_level")
     n_clusters = st.sidebar.number_input("Clústeres (K-medias)", value=2, min_value=2, key="tda_n_clusters")
+else:
+    st.sidebar.header("📈 Optimización Topológica")
+    # Parámetros iniciales coherentes con optimizacion_topologica.py
+    L = st.sidebar.slider("Longitud de Viga (m)", 6.0, 20.0, 12.0, 0.5, key="beam_length")
+    q = st.sidebar.slider("Carga Distribuida (kN/m)", 10.0, 80.0, 30.0, 1.0, key="beam_load")
+    E = st.sidebar.number_input("Módulo de Elasticidad (kPa)", value=30000000.0, step=1000000.0, key="beam_E")
+    b = st.sidebar.number_input("Base de la Viga (m)", value=0.30, step=0.05, key="beam_b")
+    h0 = st.sidebar.number_input("Altura de la Viga (m)", value=0.80, step=0.1, key="beam_h0")
+    p = st.sidebar.number_input("Factor de Penalización", value=3, min_value=1, max_value=5, key="beam_p")
+    N = st.sidebar.number_input("Número de Nodos", value=101, min_value=50, max_value=200, step=10, key="beam_N")
+    
+    # Controles adicionales
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("Control de Visualización")
+    update_frequency = st.sidebar.selectbox(
+        "Frecuencia de Actualización", 
+        ["Cada iteración", "Cada 2 iteraciones", "Cada 5 iteraciones"],
+        key="update_frequency"
+    )
+    
+    st.sidebar.subheader("Elementos Visuales")
+    show_reinforcement = st.sidebar.checkbox("Mostrar Armadura", value=True, key="show_reinforcement")
+    show_stirrups = st.sidebar.checkbox("Mostrar Estribos", value=True, key="show_stirrups")
+    show_limits = st.sidebar.checkbox("Mostrar Límites Admisibles", value=True, key="show_limits")
+    
+    st.sidebar.subheader("Animación")
+    animation_speed = st.sidebar.slider("Velocidad de Animación", 1, 10, 5, key="animation_speed")
+    
+    # Validación de parámetros
+    if L <= 0:
+        st.sidebar.error("La longitud de la viga debe ser mayor que 0")
+    if q <= 0:
+        st.sidebar.error("La carga distribuida debe ser mayor que 0")
+    if E <= 0:
+        st.sidebar.error("El módulo de elasticidad debe ser mayor que 0")
+    if b <= 0:
+        st.sidebar.error("La base de la viga debe ser mayor que 0")
+    if h0 <= 0:
+        st.sidebar.error("La altura de la viga debe ser mayor que 0")
+    if N < 10:
+        st.sidebar.error("El número de nodos debe ser al menos 10")
 
 # ==========================================
 # FUNCIONES AUXILIARES (TDA UI)
@@ -300,7 +342,7 @@ if page == "🏗️ 1. Optimización SIMP (H.E.2)":
         )
         st.plotly_chart(fig_tda, use_container_width=True)
 
-else:
+elif page == "📊 2. TDA vs K-Medias (H.E.1)":
     # ------------------------------------------
     # PÁGINA 2: TDA vs K-MEDIAS
     # ------------------------------------------
@@ -482,3 +524,429 @@ else:
                 mime="application/pdf",
                 key="btn_download_tda_pdf"
             )
+
+else:
+    # ------------------------------------------
+    # PÁGINA 3: Optimización Topológica
+    # ------------------------------------------
+    st.header("Optimización Topológica de Vigas")
+    
+    # Importar el optimizador de viga
+    from tda.optimization.beam_optimizer import BeamOptimizer
+    
+    # Inicializar estado de sesión para almacenar datos de visualización
+    if 'optimization_data' not in st.session_state:
+        st.session_state.optimization_data = None
+    if 'optimization_running' not in st.session_state:
+        st.session_state.optimization_running = False
+    
+    # Crear contenedores para la visualización
+    plot_container = st.empty()
+    metrics_container = st.container()
+    
+    # Botón para ejecutar la optimización
+    ejecutar_optimizacion = st.button("▶ Iniciar Optimización Topológica", type="primary")
+    
+    # Función de callback para actualizar la visualización en tiempo real
+    def update_visualization(visualization_data):
+        # Almacenar datos en session state para persistencia
+        st.session_state.optimization_data = visualization_data
+        
+        # Crear figura con tres subplots
+        fig = go.Figure()
+        
+        # Datos de visualización con valores por defecto si no existen
+        x = visualization_data.get("x", np.array([]))
+        h_v = visualization_data.get("h_v", np.array([]))
+        Y = visualization_data.get("Y", np.array([]))
+        Y_original = visualization_data.get("Y_original", np.array([]))
+        M = visualization_data.get("M", np.array([]))
+        As = visualization_data.get("As", np.zeros_like(x) if len(x) > 0 else np.array([]))
+        sigma_MPa = visualization_data.get("sigma_MPa", np.zeros_like(x) if len(x) > 0 else np.array([]))
+        L = visualization_data.get("L", 1.0)  # Valor por defecto razonable
+        y_adm = visualization_data.get("y_adm", 0.0)  # Valor por defecto
+        iteracion = visualization_data.get("iteration", 0)
+        saving_pct = visualization_data.get("saving_pct", 0.0)
+        weight_saved = visualization_data.get("weight_saved", 0.0)
+        
+        # Subplot 1: Geometría de la viga
+        # Perfil superior
+        if len(x) > 0 and len(h_v) > 0:
+            fig.add_trace(go.Scatter(
+                x=np.concatenate([x, x[::-1]]),
+                y=np.concatenate([h_v/2, -h_v[::-1]/2]),
+                fill='toself',
+                fillcolor='lightgray',
+                line=dict(color='black', width=2),
+                name='Viga Optimizada',
+                yaxis='y1'
+            ))
+        
+        # Armadura (representada con mayor grosor donde hay más acero)
+        if show_reinforcement and len(x) > 0 and len(h_v) > 0 and len(As) > 0:
+            # Crear segmentos para la armadura con diferentes grosores
+            # Plotly no soporta directamente grosores variables, así que creamos múltiples líneas
+            if np.max(As) > 0:
+                widths = np.maximum(1, As/np.max(As)*5)
+                # Para simplificar, usamos el ancho promedio
+                avg_width = np.mean(widths)
+            else:
+                avg_width = 1
+            
+            fig.add_trace(go.Scatter(
+                x=x,
+                y=-h_v/2,
+                mode='lines',
+                line=dict(color='red', width=avg_width),
+                name='Armadura',
+                yaxis='y1'
+            ))
+        
+        # Estribos (líneas verticales donde el corte excede la capacidad)
+        if show_stirrups and len(x) > 0 and len(h_v) > 0:
+            V_shear = visualization_data.get("V_shear", np.zeros_like(x) if len(x) > 0 else np.array([]))
+            Vc = visualization_data.get("Vc", np.zeros_like(x) if len(x) > 0 else np.array([]))
+            if len(V_shear) > 0 and len(Vc) > 0 and len(np.where(np.abs(V_shear) > Vc)[0]) > 0:
+                stirrup_indices = np.where(np.abs(V_shear) > Vc)[0]
+                for idx in stirrup_indices:
+                    if idx < len(x) and idx < len(h_v):
+                        fig.add_shape(
+                            type='line',
+                            x0=x[idx], x1=x[idx],
+                            y0=-h_v[idx]/2, y1=h_v[idx]/2,
+                            line=dict(color='gray', width=1, dash='dot'),
+                            yref='y1'
+                        )
+        
+        # Subplot 2: Curvas de deflexión
+        if len(x) > 0 and len(Y_original) > 0:
+            fig.add_trace(go.Scatter(
+                x=x,
+                y=Y_original * 1000,
+                mode='lines',
+                line=dict(color='blue', dash='dot'),
+                name='Deflexión Original',
+                yaxis='y2'
+            ))
+        
+        if len(x) > 0 and len(Y) > 0:
+            fig.add_trace(go.Scatter(
+                x=x,
+                y=Y * 1000,
+                mode='lines',
+                line=dict(color='red', width=2),
+                name='Deflexión Optimizada',
+                yaxis='y2'
+            ))
+        
+        # Límite de deflexión admisible
+        if show_limits and L > 0:
+            fig.add_trace(go.Scatter(
+                x=[0, L],
+                y=[y_adm, y_adm],
+                mode='lines',
+                line=dict(color='red', dash='dash'),
+                name='Límite Admisible',
+                yaxis='y2'
+            ))
+        
+        # Subplot 3: Momentos flectores y tensiones
+        if len(x) > 0 and len(M) > 0:
+            fig.add_trace(go.Scatter(
+                x=x,
+                y=M,
+                mode='lines',
+                line=dict(color='green', width=2),
+                name='Momento Flector',
+                yaxis='y3'
+            ))
+        
+        if len(x) > 0 and len(sigma_MPa) > 0:
+            fig.add_trace(go.Scatter(
+                x=x,
+                y=sigma_MPa,
+                mode='lines',
+                line=dict(color='darkred', width=2),
+                name='Tensión Máxima',
+                yaxis='y4'
+            ))
+        
+        # Límite de tensión admisible
+        if show_limits and L > 0:
+            fig.add_trace(go.Scatter(
+                x=[0, L],
+                y=[11.25, 11.25],
+                mode='lines',
+                line=dict(color='red', dash='dash'),
+                name='Tensión Admisible',
+                yaxis='y4'
+            ))
+        
+        # Configurar layout con tres subplots verticales
+        fig.update_layout(
+            title=f'Optimización Topológica de Viga (Iter: {iteracion})<br>Ahorro Vol: {saving_pct:.1f}% | Peso Ahorrado: {weight_saved:.2f} t',
+            xaxis=dict(title='Posición en la Luz del Puente x (m)', domain=[0, 1], anchor='y1'),
+            xaxis2=dict(title='Posición en la Luz del Puente x (m)', domain=[0, 1], anchor='y2'),
+            xaxis3=dict(title='Posición en la Luz del Puente x (m)', domain=[0, 1], anchor='y3'),
+            xaxis4=dict(domain=[0, 1], anchor='y4', overlaying='x3'),
+            yaxis=dict(title='Peralte H (m)', domain=[0.65, 1]),
+            yaxis2=dict(title='Deflexión (mm)', domain=[0.35, 0.6]),
+            yaxis3=dict(title='Momento (kN·m)', domain=[0, 0.3]),
+            yaxis4=dict(title='Tensión de Compresión (MPa)', domain=[0, 0.3], overlaying='y3', side='right'),
+            grid=dict(rows=3, columns=1, pattern='independent'),
+            showlegend=True,
+            height=800
+        )
+        
+        # Mostrar la figura
+        plot_container.plotly_chart(fig, use_container_width=True)
+    
+    # Función para determinar si se debe actualizar según la frecuencia seleccionada
+    def should_update(iteration):
+        if update_frequency == "Cada iteración":
+            return True
+        elif update_frequency == "Cada 2 iteraciones":
+            return iteration % 2 == 0
+        elif update_frequency == "Cada 5 iteraciones":
+            return iteration % 5 == 0
+        return True
+    
+    # Función de callback mejorada con control de frecuencia
+    def optimized_update_visualization(visualization_data):
+        if should_update(visualization_data["iteration"]):
+            update_visualization(visualization_data)
+    
+    if ejecutar_optimizacion or st.session_state.optimization_running:
+        st.session_state.optimization_running = True
+        
+        # Botón para cancelar la optimización
+        cancel_optimization = st.button("⏹ Cancelar Optimización", key="cancel_optimization")
+        
+        with st.spinner("Optimizando viga..."):
+            # Crear instancia del optimizador con parámetros del sidebar
+            optimizer = BeamOptimizer(b, h0, p, N, E_c=E, max_iter=50)
+            
+            # Ejecutar la optimización con callback
+            try:
+                final_results = optimizer.optimizar_viga_completo(L, q, callback=optimized_update_visualization)
+                
+                # Almacenar resultados finales
+                st.session_state.optimization_data = {
+                    "x": final_results["x"],
+                    "I": final_results["I"],
+                    "Y": final_results["Y"],
+                    "Y_original": final_results["Y_original"],
+                    "M": final_results["M"],
+                    "h_v": final_results["h_v"],
+                    "iterations": final_results["iterations"],
+                    "saving_pct": final_results["saving_pct"],
+                    "weight_saved": final_results["weight_saved"],
+                    "As": final_results.get("As", np.zeros_like(final_results["x"])),
+                    "V_shear": final_results.get("V_shear", np.zeros_like(final_results["x"])),
+                    "Vc": final_results.get("Vc", np.zeros_like(final_results["x"])),
+                    "sigma_MPa": final_results.get("sigma_MPa", np.zeros_like(final_results["x"])),
+                    "L": final_results.get("L", L),
+                    "y_adm": final_results.get("y_adm", 0),
+                    "iteration": final_results.get("iterations", 0)
+                }
+                
+                st.session_state.optimization_running = False
+                
+                # Mostrar métricas finales
+                st.subheader("Métricas de Optimización")
+                col1, col2, col3 = st.columns(3)
+                col1.metric("Iteraciones", final_results["iterations"])
+                col2.metric("Ahorro de Material", f"{final_results['saving_pct']:.1f}%", "↓")
+                col3.metric("Peso Ahorrado", f"{final_results['weight_saved']:.2f} t", "↓")
+                
+                # Botones de exportación
+                st.subheader("Exportar Resultados")
+                col_csv, col_pdf = st.columns(2)
+                
+                with col_csv:
+                    # Preparar datos para exportación CSV
+                    try:
+                        # Verificar que todos los arrays tengan la misma longitud
+                        x_data = final_results.get("x", np.array([]))
+                        if len(x_data) > 0:
+                            df_export = pd.DataFrame({
+                                "Posición (m)": x_data,
+                                "Inercia (m⁴)": final_results.get("I", np.zeros_like(x_data)),
+                                "Deflexión Original (mm)": final_results.get("Y_original", np.zeros_like(x_data)) * 1000,
+                                "Deflexión Optimizada (mm)": final_results.get("Y", np.zeros_like(x_data)) * 1000,
+                                "Momento Flector (kN·m)": final_results.get("M", np.zeros_like(x_data)),
+                                "Altura de Viga (m)": final_results.get("h_v", np.zeros_like(x_data))
+                            })
+                            csv_data = df_export.to_csv(index=False).encode('utf-8')
+                            st.download_button(
+                                label="📥 Descargar Datos (CSV)",
+                                data=csv_data,
+                                file_name="resultados_optimizacion_viga.csv",
+                                mime="text/csv"
+                            )
+                        else:
+                            st.warning("No hay datos disponibles para exportar.")
+                    except Exception as e:
+                        st.error(f"Error al preparar datos para exportación: {str(e)}")
+                
+                with col_pdf:
+                    # Botón para exportar gráfico como PDF
+                    if st.session_state.optimization_data is not None:
+                        # Crear el gráfico en formato PDF
+                        pdf_fig = go.Figure()
+                        
+                        # Obtener datos de visualización
+                        viz_data = st.session_state.optimization_data
+                        x = viz_data.get("x", np.array([]))
+                        h_v = viz_data.get("h_v", np.zeros_like(x) if len(x) > 0 else np.array([]))
+                        Y = viz_data.get("Y", np.zeros_like(x) if len(x) > 0 else np.array([]))
+                        Y_original = viz_data.get("Y_original", np.zeros_like(x) if len(x) > 0 else np.array([]))
+                        M = viz_data.get("M", np.zeros_like(x) if len(x) > 0 else np.array([]))
+                        As = viz_data.get("As", np.zeros_like(x) if len(x) > 0 else np.array([]))
+                        sigma_MPa = viz_data.get("sigma_MPa", np.zeros_like(x) if len(x) > 0 else np.array([]))
+                        L = viz_data.get("L", 1.0)
+                        y_adm = viz_data.get("y_adm", 0.0)
+                        
+                        # Replicar la visualización en el PDF
+                        if len(x) > 0 and len(h_v) > 0:
+                            # Subplot 1: Geometría de la viga
+                            pdf_fig.add_trace(go.Scatter(
+                                x=np.concatenate([x, x[::-1]]),
+                                y=np.concatenate([h_v/2, -h_v[::-1]/2]),
+                                fill='toself',
+                                fillcolor='lightgray',
+                                line=dict(color='black', width=2),
+                                name='Viga Optimizada',
+                                yaxis='y1'
+                            ))
+                            
+                            # Armadura
+                            if len(As) > 0 and np.max(As) > 0:
+                                avg_width = np.mean(np.maximum(1, As/np.max(As)*5))
+                            else:
+                                avg_width = 1
+                                
+                            pdf_fig.add_trace(go.Scatter(
+                                x=x,
+                                y=-h_v/2,
+                                mode='lines',
+                                line=dict(color='red', width=avg_width),
+                                name='Armadura',
+                                yaxis='y1'
+                            ))
+                        
+                        # Subplot 2: Curvas de deflexión
+                        if len(x) > 0 and len(Y_original) > 0:
+                            pdf_fig.add_trace(go.Scatter(
+                                x=x,
+                                y=Y_original * 1000,
+                                mode='lines',
+                                line=dict(color='blue', dash='dot'),
+                                name='Deflexión Original',
+                                yaxis='y2'
+                            ))
+                        
+                        if len(x) > 0 and len(Y) > 0:
+                            pdf_fig.add_trace(go.Scatter(
+                                x=x,
+                                y=Y * 1000,
+                                mode='lines',
+                                line=dict(color='red', width=2),
+                                name='Deflexión Optimizada',
+                                yaxis='y2'
+                            ))
+                        
+                        # Límite de deflexión admisible
+                        pdf_fig.add_trace(go.Scatter(
+                            x=[0, L],
+                            y=[y_adm, y_adm],
+                            mode='lines',
+                            line=dict(color='red', dash='dash'),
+                            name='Límite Admisible',
+                            yaxis='y2'
+                        ))
+                        
+                        # Subplot 3: Momentos flectores y tensiones
+                        if len(x) > 0 and len(M) > 0:
+                            pdf_fig.add_trace(go.Scatter(
+                                x=x,
+                                y=M,
+                                mode='lines',
+                                line=dict(color='green', width=2),
+                                name='Momento Flector',
+                                yaxis='y3'
+                            ))
+                        
+                        if len(x) > 0 and len(sigma_MPa) > 0:
+                            pdf_fig.add_trace(go.Scatter(
+                                x=x,
+                                y=sigma_MPa,
+                                mode='lines',
+                                line=dict(color='darkred', width=2),
+                                name='Tensión Máxima',
+                                yaxis='y4'
+                            ))
+                        
+                        # Límite de tensión admisible
+                        pdf_fig.add_trace(go.Scatter(
+                            x=[0, L],
+                            y=[11.25, 11.25],
+                            mode='lines',
+                            line=dict(color='red', dash='dash'),
+                            name='Tensión Admisible',
+                            yaxis='y4'
+                        ))
+                        
+                        # Configurar layout
+                        pdf_fig.update_layout(
+                            title='Optimización Topológica de Viga - Resultados Finales',
+                            xaxis=dict(title='Posición en la Luz del Puente x (m)', domain=[0, 1], anchor='y1'),
+                            xaxis2=dict(title='Posición en la Luz del Puente x (m)', domain=[0, 1], anchor='y2'),
+                            xaxis3=dict(title='Posición en la Luz del Puente x (m)', domain=[0, 1], anchor='y3'),
+                            xaxis4=dict(domain=[0, 1], anchor='y4', overlaying='x3'),
+                            yaxis=dict(title='Peralte H (m)', domain=[0.65, 1]),
+                            yaxis2=dict(title='Deflexión (mm)', domain=[0.35, 0.6]),
+                            yaxis3=dict(title='Momento (kN·m)', domain=[0, 0.3]),
+                            yaxis4=dict(title='Tensión de Compresión (MPa)', domain=[0, 0.3], overlaying='y3', side='right'),
+                            grid=dict(rows=3, columns=1, pattern='independent'),
+                            showlegend=True,
+                            height=800
+                        )
+                        
+                        # Convertir a PDF
+                        pdf_buffer = io.BytesIO()
+                        pdf_fig.write_image(pdf_buffer, format='pdf')
+                        pdf_buffer.seek(0)
+                        
+                        st.download_button(
+                            label="📥 Descargar Gráfico (PDF)",
+                            data=pdf_buffer,
+                            file_name="grafico_optimizacion_viga.pdf",
+                            mime="application/pdf"
+                        )
+                    else:
+                        st.download_button(
+                            label="📥 Descargar Gráfico (PDF)",
+                            data="No hay datos para exportar. Ejecute primero la optimización.",
+                            file_name="grafico_optimizacion_viga.pdf",
+                            mime="application/pdf",
+                            disabled=True
+                        )
+                
+                st.success("¡Optimización completada!")
+                
+            except Exception as e:
+                st.session_state.optimization_running = False
+                st.error(f"Error en la optimización: {str(e)}")
+    
+    # Si hay datos de optimización almacenados, mostrarlos
+    elif st.session_state.optimization_data is not None:
+        # Mostrar la visualización final
+        update_visualization(st.session_state.optimization_data)
+        
+        # Mostrar métricas finales
+        st.subheader("Métricas de Optimización")
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Iteraciones", st.session_state.optimization_data.get("iterations", "N/A"))
+        col2.metric("Ahorro de Material", f"{st.session_state.optimization_data.get('saving_pct', 0):.1f}%", "↓")
+        col3.metric("Peso Ahorrado", f"{st.session_state.optimization_data.get('weight_saved', 0):.2f} t", "↓")

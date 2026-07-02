@@ -141,10 +141,10 @@ class SimpTda2DOptimizer:
                 - float: Valor final de compliance optimizado.
                 - float: Porcentaje de reducción de compliance desde el baseline.
         """
-        rho_base = self._initialize_rho_base()
+        rho_base = self.volfrac * np.ones((self.nely, self.nelx))
         U_base = self._solve_fem(rho_base)
-        ce_base = self._compute_ce(U_base)
-        self.c_base = self._calculate_c_base(ce_base)
+        ce_base = (np.dot(U_base[self.edofMat].reshape(self.nelx*self.nely, 8), self.KE) * U_base[self.edofMat].reshape(self.nelx*self.nely, 8)).sum(1)
+        self.c_base = (rho_base.flatten(order='F')**self.penal * ce_base).sum()
 
         x = self.volfrac * np.ones((self.nely, self.nelx))
         xPhys = x.copy()
@@ -155,9 +155,11 @@ class SimpTda2DOptimizer:
         while loop < self.max_iter:
             loop += 1
             U = self._solve_fem(xPhys)
-            ce = self._compute_ce(U)
-            c = self._calculate_c(ce, xPhys)
-            dc = self._compute_dc(ce, xPhys)
+
+            ce = (np.dot(U[self.edofMat].reshape(self.nelx*self.nely, 8), self.KE) * U[self.edofMat].reshape(self.nelx*self.nely, 8)).sum(1)
+            c = (xPhys.flatten(order='F')**self.penal * ce).sum()
+            dc = -self.penal * xPhys.flatten(order='F')**(self.penal-1) * ce
+            dc = np.asarray((self.H * (x.flatten(order='F') * dc)) / self.Hs)[:, 0] / np.maximum(1e-3, x.flatten(order='F'))
 
             l1, l2 = 0.0, 1e9
             move = 0.2
@@ -165,8 +167,13 @@ class SimpTda2DOptimizer:
 
             while (l2 - l1) > 1e-4:
                 lmid = 0.5 * (l2 + l1)
-                x_bisection = self._compute_x_bisection(xPhys, dc, lmid)
-                xnew = self._update_x_new(xPhys, move, x_bisection)
+                x_bisection = x.flatten(order='F') * np.sqrt(-dc / lmid)
+                xnew = np.maximum(0.0, np.maximum(x.flatten(order='F')-move,
+                       np.minimum(1.0, np.minimum(x.flatten(order='F')+move, x_bisection))))
+                if np.sum(xnew) - self.volfrac*self.nelx*self.nely > 0:
+                    l1 = lmid
+                else:
+                    l2 = lmid
 
             change_x = np.max(np.abs(xnew - x.flatten(order='F')))
             x = xnew.reshape((self.nely, self.nelx), order='F')
@@ -192,33 +199,3 @@ class SimpTda2DOptimizer:
         reduccion_pct = ((self.c_base - c) / self.c_base) * 100
 
         return xPhys, resultado_tda['dgms'], betti_1, c, reduccion_pct
-
-    def _initialize_rho_base(self):
-        """Inicializa la densidad base."""
-        return self.volfrac * np.ones_like(self.volfrac)
-
-    def _compute_ce(self, U):
-        """Calcula el costo de elementos finitos."""
-        return (np.dot(U[self.edofMat].reshape(self.nelx*self.nely, 8), self.KE) * U[self.edofMat].reshape(self.nelx*self.nely, 8)).sum(1)
-
-    def _calculate_c_base(self, ce):
-        """Calcula el costo base."""
-        return (self.volfrac.flatten(order='F')**self.penal * ce).sum()
-
-    def _calculate_c(self, ce, xPhys):
-        """Calcula el costo actual."""
-        return (xPhys.flatten(order='F')**self.penal * ce).sum()
-
-    def _compute_dc(self, ce, xPhys):
-        """Calcula la derivada del costo con respecto a la densidad."""
-        dc = -self.penal * xPhys.flatten(order='F')**(self.penal-1) * ce
-        return np.asarray((self.H * (xPhys.flatten(order='F') * dc)) / self.Hs)[:, 0] / np.maximum(1e-3, xPhys.flatten(order='F'))
-
-    def _compute_x_bisection(self, xPhys, dc, lmid):
-        """Calcula la bisección de la densidad."""
-        return xPhys.flatten(order='F') * np.sqrt(-dc / lmid)
-
-    def _update_x_new(self, xPhys, move, x_bisection):
-        """Actualiza la nueva densidad."""
-        return np.maximum(0.0, np.maximum(xPhys.flatten(order='F')-move,
-               np.minimum(1.0, np.minimum(xPhys.flatten(order='F')+move, x_bisection))))

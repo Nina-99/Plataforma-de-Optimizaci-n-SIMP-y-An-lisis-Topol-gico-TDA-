@@ -7,4 +7,6 @@ invariantes topológicos mediante diagramas de persistencia.
 
 Clases principales:
 - SimpTda2DOptimizer: Optimizador de topología 2D con análisis de Betti numbers
+- BeamOptimizer: Optimizador de vigas basado en SIMP y TDA (desde beam_optimizer)
 """
+
